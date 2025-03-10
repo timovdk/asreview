@@ -41,7 +41,7 @@ def loss(labels: list[int]):
     )
 
 
-def ndcg(labels: list[int]):
+def ndcg(labels: list[int], log_func=np.log2):
     """Compute the Normalized Discounted Cumulative Gain (NDCG)
 
     Basesd on: https://doi.org/10.48550/arXiv.1304.6480
@@ -50,6 +50,9 @@ def ndcg(labels: list[int]):
     ---------
     labels: list
         List of binary labels (0 or 1).
+
+    log_func: callable, default=np.log2
+        The logarithm function to use (e.g., `np.log2` or `np.log`). Default is `np.log2`.
 
     Returns
     -------
@@ -61,7 +64,7 @@ def ndcg(labels: list[int]):
     if Ny == 0 or Nx == Ny:
         raise ValueError("Labels must contain two distinct classes.")
 
-    dcg = np.sum(labels / np.log2(np.arange(2, Nx + 2)))
-    idcg = np.sum(1 / np.log2(np.arange(2, Ny + 2)))
+    dcg = np.sum(labels / log_func(np.arange(2, Nx + 2)))
+    idcg = np.sum(1 / log_func(np.arange(2, Ny + 2)))
 
     return float(dcg / idcg)
