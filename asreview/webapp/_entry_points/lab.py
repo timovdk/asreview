@@ -23,8 +23,8 @@ from pathlib import Path
 from threading import Thread
 
 import requests
-from waitress.server import create_server
 from rich.console import Console
+from waitress.server import create_server
 
 import asreview as asr
 from asreview._deprecated import mark_deprecated_help_strings
@@ -32,9 +32,11 @@ from asreview.webapp._task_manager.task_manager import run_task_manager
 from asreview.webapp.app import create_app
 from asreview.webapp.utils import asreview_path
 
+logger = logging.getLogger(__name__)
+
 # Host name
 HOST_NAME = os.getenv("ASREVIEW_LAB_HOST", "127.0.0.1")
-PORT_NUMBER = os.getenv("ASREVIEW_LAB_PORT", 5000)
+PORT_NUMBER = os.getenv("ASREVIEW_LAB_PORT", "5000")
 
 
 def _check_port_in_use(host, port):
@@ -72,7 +74,7 @@ def _wait_for_server(host, port, timeout=60):
         try:
             with socket.create_connection((host, port), timeout=1):
                 return True
-        except (socket.error, ConnectionRefusedError):
+        except (OSError, ConnectionRefusedError):
             time.sleep(0.1)
     return False
 
@@ -151,13 +153,13 @@ def lab_entry_point(argv):
     port = args.port
     original_port = port
     while _check_port_in_use(args.host, port) is True:
-        logging.debug(f"Address is not available :: {args.host}:{port}")
+        logger.debug(f"Address is not available :: {args.host}:{port}")
         port = int(port) + 1
         if port - original_port >= args.port_retries:
             raise ConnectionError(
                 "Could not find an available port \n"
                 "to launch ASReview LAB. Last port \n"
-                f"was {str(port)}"
+                f"was {port!s}"
             )
 
     protocol = "https://" if args.certfile and args.keyfile else "http://"
@@ -232,7 +234,7 @@ def lab_entry_point(argv):
                     "Unable to startup the task server within the timeout period."
                 )
     except TimeoutError as e:
-        console.print(f"\n\n[red]Error: {str(e)}[/red]\n\n")
+        console.print(f"\n\n[red]Error: {e!s}[/red]\n\n")
         process.terminate()
         process.join()
         return
@@ -286,7 +288,7 @@ def lab_entry_point(argv):
         if e.errno == 9:
             pass
         else:
-            raise e
+            raise
 
     console.print("ASReview LAB shut down.\n\n")
 

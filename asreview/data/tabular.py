@@ -15,6 +15,8 @@
 __all__ = ["CSVReader"]
 
 
+from typing import ClassVar
+
 import pandas as pd
 
 from asreview.data.base import BaseReader
@@ -24,10 +26,10 @@ from asreview.data.record import Record
 class CSVReader(BaseReader):
     """CVS file reader."""
 
-    read_format = [".csv", ".tab", ".tsv"]
-    write_format = [".csv", ".tsv", ".xlsx"]
+    read_format: ClassVar[list[str]] = [".csv", ".tab", ".tsv"]
+    write_format: ClassVar[list[str]] = [".csv", ".tsv", ".xlsx"]
 
-    mime_types = {
+    mime_types: ClassVar[dict[str, list[str]]] = {
         "text/csv": [".csv"],
         "text/tab-separated-values": [".tsv", ".tab"],
         "text/plain": [".csv", ".tsv", ".tab"],
@@ -88,10 +90,10 @@ class CSVWriter:
 class ExcelReader(BaseReader):
     """Excel file reader."""
 
-    read_format = [".xlsx"]
-    write_format = [".csv", ".tsv", ".xlsx"]
+    read_format: ClassVar[list[str]] = [".xlsx"]
+    write_format: ClassVar[list[str]] = [".csv", ".tsv", ".xlsx"]
 
-    mime_types = {
+    mime_types: ClassVar[dict[str, list[str]]] = {
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"],
     }
 
@@ -121,7 +123,7 @@ class ExcelReader(BaseReader):
             wanted_columns.extend(col_names)
 
         for sheet_name in dfs:
-            col_names = set([col.lower() for col in list(dfs[sheet_name])])
+            col_names = {col.lower() for col in list(dfs[sheet_name])}
             obj_val = len(col_names & set(wanted_columns))
             if obj_val > sheet_obj_val:
                 sheet_obj_val = obj_val

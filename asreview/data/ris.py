@@ -18,6 +18,7 @@ import copy
 import io
 import json
 import re
+from typing import ClassVar
 from urllib.request import urlopen
 
 import pandas as pd
@@ -71,10 +72,10 @@ def _remove_asreview_data_from_notes(note_list):
 class RISReader(BaseReader):
     """RIS file reader."""
 
-    read_format = [".ris", ".txt"]
-    write_format = [".csv", ".tsv", ".xlsx", ".ris"]
+    read_format: ClassVar[list[str]] = [".ris", ".txt"]
+    write_format: ClassVar[list[str]] = [".csv", ".tsv", ".xlsx", ".ris"]
 
-    mime_types = {
+    mime_types: ClassVar[dict[str, list[str]]] = {
         "application/x-research-info-systems": [".ris", ".txt"],
         "text/plain": [".txt", ".ris"],
     }
@@ -262,7 +263,7 @@ class RISWriter:
             rec_copy = {
                 key: val
                 for key, val in rec_copy.items()
-                if not key == "included" and not key.startswith("asreview_")
+                if key != "included" and not key.startswith("asreview_")
             }
             # Append the deepcopied and updated record to a new array
             records_new.append(rec_copy)
@@ -275,5 +276,5 @@ class RISWriter:
         # From IO dataframe
         else:
             # Write the whole content to a file
-            with open(fp, "w", encoding="utf8") as fp:
-                rispy.dump(records_new, fp)
+            with open(fp, "w", encoding="utf8") as f:
+                rispy.dump(records_new, f)

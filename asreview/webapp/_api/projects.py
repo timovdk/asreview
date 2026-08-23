@@ -34,10 +34,10 @@ import numpy as np
 import pandas as pd
 from flask import Blueprint
 from flask import abort
+from flask import after_this_request
 from flask import current_app
 from flask import jsonify
 from flask import request
-from flask import after_this_request
 from flask import send_file
 from flask_login import current_user
 from sklearn.feature_extraction.text import CountVectorizer
@@ -85,6 +85,8 @@ from asreview.webapp._tasks import run_model
 from asreview.webapp._tasks import run_simulation
 from asreview.webapp.utils import asreview_path
 from asreview.webapp.utils import get_project_path
+
+logger = logging.getLogger(__name__)
 
 try:
     import importlib.metadata
@@ -148,7 +150,7 @@ def _run_model(project):
             }
             # send
             client_socket.sendall(json.dumps(payload).encode("utf-8"))
-        except socket.error:
+        except OSError:
             raise RuntimeError("Queue manager is not alive.")
         finally:
             client_socket.close()
@@ -187,14 +189,14 @@ def generate_invitation_token(project):
 @bp.errorhandler(ValueError)
 def value_error(e):
     message = str(e) if str(e) else "Incorrect value."
-    logging.exception(e)
+    logger.exception(e)
     return jsonify(message=message), 400
 
 
 @bp.errorhandler(ProjectNotFoundError)
 def project_not_found(e):
     message = str(e) if str(e) else "Project not found."
-    logging.exception(message)
+    logger.exception(message)
     return jsonify(message=message), 404
 
 
@@ -204,11 +206,11 @@ def error_500(e):
 
     if original is None or str(e.original_exception) == "":
         # direct 500 error, such as abort(500)
-        logging.exception(e)
+        logger.exception(e)
         return jsonify(message="Whoops, something went wrong."), 500
 
     # wrapped unhandled error
-    logging.error(e.original_exception)
+    logger.error(e.original_exception)
     return jsonify(message=str(e.original_exception)), 500
 
 
@@ -216,8 +218,7 @@ def error_500(e):
 @bp.route("/projects", methods=["GET"])
 @login_required
 @current_user_projects
-def api_get_projects(projects):  # noqa: F401
-    """"""
+def api_get_projects(projects):
 
     mode = request.args.get("subset", None)
 
@@ -241,11 +242,11 @@ def api_get_projects(projects):  # noqa: F401
             else:
                 project_config["roles"] = {"owner": True}
 
-            logging.info("Project found: {}".format(project_config["id"]))
+            logger.info("Project found: {}".format(project_config["id"]))
             project_info.append(project_config)
 
         except Exception as err:
-            logging.error(err)
+            logger.error(err)
 
     # sort the projects based on created_at_unix
     project_info = sorted(
@@ -259,7 +260,7 @@ def api_get_projects(projects):  # noqa: F401
 
 @bp.route("/projects/create", methods=["POST"])
 @login_required
-def api_create_project():  # noqa: F401
+def api_create_project():
     """Create a new project"""
 
     project_id = uuid4().hex
@@ -300,7 +301,7 @@ def api_create_project():  # noqa: F401
             except Exception:
                 pass
 
-            logging.exception(err)
+            logger.exception(err)
             return (
                 jsonify(message=f"Failed to create project for this dataset. {err}"),
                 400,
@@ -362,8 +363,7 @@ def api_upgrade_projects(projects):
 @bp.route("/projects/<project_id>/info", methods=["GET"])
 @login_required
 @project_authorization
-def api_get_project_info(project):  # noqa: F401
-    """"""
+def api_get_project_info(project):
     project_config = project.config
 
     if current_app.config.get("AUTHENTICATION", True):
@@ -384,14 +384,13 @@ def api_get_project_info(project):  # noqa: F401
 @bp.route("/projects/<project_id>/info", methods=["PUT"])
 @login_required
 @project_authorization
-def api_update_project_info(project):  # noqa: F401
+def api_update_project_info(project):
     """Update project info"""
 
     update_dict = request.form.to_dict()
 
-    if "name" in update_dict:
-        if len(update_dict["name"]) == 0:
-            raise ValueError("Project title should be at least 1 character")
+    if "name" in update_dict and len(update_dict["name"]) == 0:
+        raise ValueError("Project title should be at least 1 character")
 
     project.update_config(**update_dict)
 
@@ -400,8 +399,7 @@ def api_update_project_info(project):  # noqa: F401
 
 @bp.route("/datasets", methods=["GET"])
 @login_required
-def api_demo_data_project():  # noqa: F401
-    """"""
+def api_demo_data_project():
 
     subset = request.args.get("subset", None)
 
@@ -414,7 +412,7 @@ def api_demo_data_project():  # noqa: F401
             )
 
         except Exception as err:
-            logging.exception(err)
+            logger.exception(err)
             return jsonify(message="Failed to load plugin datasets."), 500
 
     elif subset == "benchmark":
@@ -423,7 +421,7 @@ def api_demo_data_project():  # noqa: F401
             result_datasets = manager.list(include=["synergy", "benchmark-nature"])
 
         except Exception as err:
-            logging.exception(err)
+            logger.exception(err)
             return jsonify(message="Failed to load benchmark datasets."), 500
 
     else:
@@ -435,8 +433,7 @@ def api_demo_data_project():  # noqa: F401
 @bp.route("/projects/<project_id>/data", methods=["GET"])
 @login_required
 @project_authorization
-def api_get_project_data(project):  # noqa: F401
-    """"""
+def api_get_project_data(project):
 
     data = project.db.input[["included", "title", "abstract", "doi", "url"]].replace(
         "", None
@@ -476,9 +473,8 @@ def api_list_dataset_writers(project):
     write_format = None
     for c in readers:
         c_loaded = c.load()
-        if fp_data.suffix in c_loaded.read_format:
-            if write_format is None:
-                write_format = c_loaded.write_format
+        if fp_data.suffix in c_loaded.read_format and write_format is None:
+            write_format = c_loaded.write_format
 
     # get available writers
     payload = {"result": []}
@@ -486,7 +482,7 @@ def api_list_dataset_writers(project):
         c_loaded = c.load()
         payload["result"].append(
             {
-                "enabled": True if c_loaded.write_format in write_format else False,
+                "enabled": c_loaded.write_format in write_format,
                 "name": c_loaded.name,
                 "label": c_loaded.label,
                 "caution": c_loaded.caution if hasattr(c_loaded, "caution") else None,
@@ -512,7 +508,7 @@ def api_list_dataset_writers(project):
 @bp.route("/projects/<project_id>/search", methods=["GET"])
 @login_required
 @project_authorization
-def api_search_data(project):  # noqa: F401
+def api_search_data(project):
     """Search for records"""
     q = request.args.get("q", default=None, type=str)
     max_results = request.args.get("n_max", default=10, type=int)
@@ -547,7 +543,7 @@ def api_search_data(project):  # noqa: F401
 @bp.route("/projects/<project_id>/labeled", methods=["GET"])
 @login_required
 @project_authorization
-def api_get_labeled(project):  # noqa: F401
+def api_get_labeled(project):
     """Get all records classified as labeled documents"""
 
     page = request.args.get("page", default=None, type=int)
@@ -645,7 +641,7 @@ def api_get_labeled(project):  # noqa: F401
 @bp.route("/projects/<project_id>/labeled_stats", methods=["GET"])
 @login_required
 @project_authorization
-def api_get_labeled_stats(project):  # noqa: F401
+def api_get_labeled_stats(project):
     """Get all records classified as prior documents"""
 
     # Retrieve the include_priors parameter from the request's query.
@@ -709,7 +705,7 @@ def api_list_learners():
 @bp.route("/projects/<project_id>/learner", methods=["GET"])
 @login_required
 @project_authorization
-def api_get_learner(project):  # noqa: F401
+def api_get_learner(project):
     """Get the latest learner used in the project"""
     return project.review["model"]
 
@@ -717,7 +713,7 @@ def api_get_learner(project):  # noqa: F401
 @bp.route("/projects/<project_id>/learner", methods=["POST", "PUT"])
 @login_required
 @project_authorization
-def api_set_learner(project):  # noqa: F401
+def api_set_learner(project):
     """Set the learner used in the project"""
 
     name = request.form.get("name", "custom")
@@ -736,7 +732,7 @@ def api_set_learner(project):  # noqa: F401
 @bp.route("/projects/<project_id>/wordcounts", methods=["GET"])
 @login_required
 @project_authorization
-def api_get_wordcounts(project):  # noqa: F401
+def api_get_wordcounts(project):
     """Get the word counts used in the project"""
 
     with project.db as db:
@@ -772,7 +768,7 @@ def api_get_wordcounts(project):  # noqa: F401
 @bp.route("/projects/<project_id>/train", methods=["POST"])
 @login_required
 @project_authorization
-def api_train(project):  # noqa: F401
+def api_train(project):
     """Start training of first model or simulation."""
 
     if ranking := request.form.get("ranking", type=str, default=None):
@@ -783,7 +779,7 @@ def api_train(project):  # noqa: F401
         _run_model(project)
 
     except Exception as err:
-        logging.exception(err)
+        logger.exception(err)
         message = f"Failed to train the model. {err}"
         return jsonify(message=message), 400
 
@@ -793,7 +789,7 @@ def api_train(project):  # noqa: F401
 @bp.route("/projects/<project_id>/status", methods=["GET"])
 @login_required
 @project_authorization
-def api_get_status(project):  # noqa: F401
+def api_get_status(project):
     """Check the status of the review"""
 
     return jsonify({"status": project.review["status"]})
@@ -802,7 +798,7 @@ def api_get_status(project):  # noqa: F401
 @bp.route("/projects/<project_id>/review", methods=["GET"])
 @login_required
 @project_authorization
-def api_get_review(project):  # noqa: F401
+def api_get_review(project):
     """Check the status of the review"""
 
     return jsonify({"data": project.config["review"]})
@@ -847,9 +843,12 @@ def api_update_review_status(project):
 
         project.update_review(status=status)
 
-    elif current_status == "review" and status == "finished":
-        project.update_review(status=status)
-    elif current_status == "finished" and status == "review":
+    elif (
+        current_status == "review"
+        and status == "finished"
+        or current_status == "finished"
+        and status == "review"
+    ):
         project.update_review(status=status)
         # ideally, also check here for empty pool
     else:
@@ -934,7 +933,7 @@ def api_import_project():
             request.files["file"], asreview_path(), safe_import=True
         )
     except Exception as err:
-        logging.exception(err)
+        logger.exception(err)
         raise ValueError("Failed to import project.") from err
 
     # Project.load has already written the new project directory to disk.
@@ -985,7 +984,7 @@ def get_tag_groups(project):
     except FileNotFoundError:
         return jsonify([])
     except Exception as err:
-        logging.exception(err)
+        logger.exception(err)
         return jsonify([]), 500
 
 
@@ -1027,7 +1026,7 @@ def create_tag_group(project):
 
         return jsonify([new_tag_group])
     except Exception as err:
-        logging.exception(err)
+        logger.exception(err)
         return jsonify(message="Failed to create tag group."), 500
 
 
@@ -1074,7 +1073,7 @@ def update_tag_group(project, group_id):
     except FileNotFoundError:
         return jsonify(message=f"Tag group '{group_id}' not found."), 404
     except Exception as err:
-        logging.exception(err)
+        logger.exception(err)
         return jsonify(message="Failed to update tag group."), 500
 
 
@@ -1084,7 +1083,7 @@ def _flatten_tags(results, tags_config):
         return results
 
     df_tags = []
-    for _, row in results["tags"].items():
+    for row in results["tags"].values():
         # fix migration of projects without list-like values in tags column
         if not isinstance(row, list):
             df_tags.append({})
@@ -1239,7 +1238,7 @@ def export_project(project):
     tmpdir = tempfile.mkdtemp()
     tmpfile = Path(tmpdir, project_export_name).with_suffix(".asreview")
 
-    logging.info("Saving project (temporary) to %s", tmpfile)
+    logger.info("Saving project (temporary) to %s", tmpfile)
     project.export(tmpfile)
 
     @after_this_request
@@ -1257,7 +1256,7 @@ def export_project(project):
 @bp.route("/projects/<project_id>/progress", methods=["GET"])
 @login_required
 @project_authorization
-def api_get_progress_info(project):  # noqa: F401
+def api_get_progress_info(project):
     """Get progress statistics of a project"""
 
     include_priors = request.args.get("priors", True, type=bool)
@@ -1334,7 +1333,7 @@ def api_get_metrics(project):
 @bp.route("/projects/<project_id>/stopping", methods=["GET"])
 @login_required
 @project_authorization
-def api_get_stopper(project):  # noqa: F401
+def api_get_stopper(project):
     """Get stopper of a project"""
     cycle = ActiveLearningCycleData(**project.get_model_config())
     stopper = ActiveLearningCycle.from_meta(cycle).stopper
@@ -1369,7 +1368,7 @@ def api_get_stopper(project):  # noqa: F401
 @bp.route("/projects/<project_id>/stopping", methods=["POST", "PUT"])
 @login_required
 @project_authorization
-def api_mutate_stopper(project):  # noqa: F401
+def api_mutate_stopper(project):
     """Mutate stopper of a project"""
 
     model_config = project.get_model_config()
@@ -1409,7 +1408,7 @@ def api_get_progress_data(project):  # Consolidated endpoint
 @bp.route("/projects/<project_id>/record/<record_id>", methods=["POST", "PUT"])
 @login_required
 @project_authorization
-def api_label_record(project, record_id):  # noqa: F401
+def api_label_record(project, record_id):
     """Label item
 
     This request handles the document identifier and the corresponding label.
@@ -1463,7 +1462,7 @@ def api_label_record(project, record_id):  # noqa: F401
 @bp.route("/projects/<project_id>/record/<record_id>/note", methods=["PUT"])
 @login_required
 @project_authorization
-def api_update_note(project, record_id):  # noqa: F401
+def api_update_note(project, record_id):
     note = request.form.get("note", type=str)
     note = note if note != "" else None
 
@@ -1476,7 +1475,7 @@ def api_update_note(project, record_id):  # noqa: F401
 @bp.route("/projects/<project_id>/get_record", methods=["GET"])
 @login_required
 @project_authorization
-def api_get_record(project):  # noqa: F401
+def api_get_record(project):
     """Retrieve unlabeled record in order of review."""
 
     user_id = (
@@ -1519,8 +1518,7 @@ def api_get_record(project):  # noqa: F401
 @bp.route("/projects/<project_id>/delete", methods=["DELETE"])
 @login_required
 @project_authorization
-def api_delete_project(project):  # noqa: F401
-    """"""
+def api_delete_project(project):
     if project.project_path.exists() and project.project_path.is_dir():
         try:
             # remove from database if applicable
@@ -1555,7 +1553,7 @@ def api_delete_project(project):  # noqa: F401
             shutil.rmtree(project.project_path)
 
         except Exception as err:
-            logging.exception(err)
+            logger.exception(err)
             return jsonify(message="Failed to delete project."), 500
 
         return jsonify({"success": True})
@@ -1563,7 +1561,7 @@ def api_delete_project(project):  # noqa: F401
 
 @bp.route("/resolve_uri", methods=["GET"])
 @login_required
-def api_resolve_uri():  # noqa: F401
+def api_resolve_uri():
     """Resolve the uri of the dataset upload"""
 
     uri = request.args.get("uri")
@@ -1585,11 +1583,11 @@ def api_resolve_uri():  # noqa: F401
             files = dh.files.copy()
 
             for i, _f in enumerate(files):
-                files[i]["disabled"] = Path(files[i]["name"]).suffix not in reader_keys
+                files[i]["disabled"] = Path(_f["name"]).suffix not in reader_keys
 
             return jsonify(files=files), 201
         except Exception:
-            if uri.startswith("https://doi.org/") or uri.startswith("http://doi.org/"):
+            if uri.startswith(("https://doi.org/", "http://doi.org/")):
                 raise ValueError("Can't retrieve files for this DOI.")
             else:
                 raise ValueError("Can't retrieve files for this URL.")
@@ -1656,7 +1654,7 @@ def generate_project_invitation_link(project_id):
         except SQLAlchemyError as e:
             DB.session.rollback()
             response = (
-                jsonify({"message": f"Error generating invitation link: {str(e)}"}),
+                jsonify({"message": f"Error generating invitation link: {e!s}"}),
                 500,
             )
 
@@ -1686,7 +1684,7 @@ def revoke_project_invitation_link(project_id):
         except SQLAlchemyError as e:
             DB.session.rollback()
             response = (
-                jsonify({"message": f"Error revoking invitation link: {str(e)}"}),
+                jsonify({"message": f"Error revoking invitation link: {e!s}"}),
                 500,
             )
 

@@ -14,33 +14,33 @@
 
 import json
 import logging
+import socket
+from datetime import datetime
+from datetime import timezone
 from pathlib import Path
 
 from flask import Blueprint
 from flask import jsonify
 from flask import request
+from sqlalchemy import create_engine
 from sqlalchemy import delete
 from sqlalchemy import or_
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import sessionmaker
 
+import asreview as asr
 from asreview.webapp import DB
 from asreview.webapp._authentication.decorators import admin_required
 from asreview.webapp._authentication.models import Project
 from asreview.webapp._authentication.models import User
-from asreview.webapp.utils import asreview_path
-import asreview as asr
 from asreview.webapp._task_manager.models import ProjectQueueModel
-from asreview.webapp._task_manager.task_manager import (
-    DEFAULT_TASK_MANAGER_HOST,
-    DEFAULT_TASK_MANAGER_PORT,
-)
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from datetime import datetime
-from datetime import timezone
-import socket
+from asreview.webapp._task_manager.task_manager import DEFAULT_TASK_MANAGER_HOST
+from asreview.webapp._task_manager.task_manager import DEFAULT_TASK_MANAGER_PORT
+from asreview.webapp.utils import asreview_path
+
+logger = logging.getLogger(__name__)
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
 
@@ -69,7 +69,7 @@ def get_users():
 
         return jsonify({"users": user_list}), 200
     except SQLAlchemyError as e:
-        return jsonify({"message": f"Database error: {str(e)}"}), 500
+        return jsonify({"message": f"Database error: {e!s}"}), 500
 
 
 @bp.route("/users", methods=["POST"])
@@ -132,13 +132,13 @@ def create_user():
 
     except ValueError as e:
         DB.session.rollback()
-        return jsonify({"message": f"Validation error: {str(e)}"}), 400
+        return jsonify({"message": f"Validation error: {e!s}"}), 400
     except IntegrityError as e:
         DB.session.rollback()
-        return jsonify({"message": f"User already exists: {str(e)}"}), 409
+        return jsonify({"message": f"User already exists: {e!s}"}), 409
     except SQLAlchemyError as e:
         DB.session.rollback()
-        return jsonify({"message": f"Database error: {str(e)}"}), 500
+        return jsonify({"message": f"Database error: {e!s}"}), 500
 
 
 @bp.route("/users/bulk-import", methods=["POST"])
@@ -235,7 +235,7 @@ def bulk_import_users():
                     {
                         "name": user_data.get("name", ""),
                         "email": user_data.get("email", ""),
-                        "error": f"Validation error: {str(e)}",
+                        "error": f"Validation error: {e!s}",
                     }
                 )
             except Exception as e:
@@ -244,7 +244,7 @@ def bulk_import_users():
                     {
                         "name": user_data.get("name", ""),
                         "email": user_data.get("email", ""),
-                        "error": f"Error: {str(e)}",
+                        "error": f"Error: {e!s}",
                     }
                 )
 
@@ -273,10 +273,10 @@ def bulk_import_users():
 
     except SQLAlchemyError as e:
         DB.session.rollback()
-        return jsonify({"message": f"Database error: {str(e)}"}), 500
+        return jsonify({"message": f"Database error: {e!s}"}), 500
     except Exception as e:
         DB.session.rollback()
-        return jsonify({"message": f"Error: {str(e)}"}), 500
+        return jsonify({"message": f"Error: {e!s}"}), 500
 
 
 @bp.route("/users/<int:user_id>", methods=["PUT"])
@@ -291,7 +291,7 @@ def update_user(user_id):
         data = request.get_json()
 
         # Handle password separately for admin privilege
-        if "password" in data and data["password"]:
+        if data.get("password"):
             if user.origin == "asreview":
                 user.hashed_password = User.create_password_hash(data["password"])
             else:
@@ -300,9 +300,7 @@ def update_user(user_id):
                 ), 400
 
         # Sanitize inputs before calling update_profile
-        email = (
-            data["email"].strip() if "email" in data and data["email"] else user.email
-        )
+        email = data["email"].strip() if data.get("email") else user.email
         name = data["name"].strip() if "name" in data else user.name
         affiliation = (
             (
@@ -345,13 +343,13 @@ def update_user(user_id):
 
     except ValueError as e:
         DB.session.rollback()
-        return jsonify({"message": f"Validation error: {str(e)}"}), 400
+        return jsonify({"message": f"Validation error: {e!s}"}), 400
     except IntegrityError as e:
         DB.session.rollback()
-        return jsonify({"message": f"Integrity error: {str(e)}"}), 409
+        return jsonify({"message": f"Integrity error: {e!s}"}), 409
     except SQLAlchemyError as e:
         DB.session.rollback()
-        return jsonify({"message": f"Database error: {str(e)}"}), 500
+        return jsonify({"message": f"Database error: {e!s}"}), 500
 
 
 @bp.route("/users/<int:user_id>", methods=["DELETE"])
@@ -380,7 +378,7 @@ def delete_user(user_id):
 
     except SQLAlchemyError as e:
         DB.session.rollback()
-        return jsonify({"message": f"Database error: {str(e)}"}), 500
+        return jsonify({"message": f"Database error: {e!s}"}), 500
 
 
 @bp.route("/users/batch-delete", methods=["POST"])
@@ -434,10 +432,10 @@ def batch_delete_users():
 
     except SQLAlchemyError as e:
         DB.session.rollback()
-        return jsonify({"message": f"Database error: {str(e)}"}), 500
+        return jsonify({"message": f"Database error: {e!s}"}), 500
     except Exception as e:
         DB.session.rollback()
-        return jsonify({"message": f"Error: {str(e)}"}), 500
+        return jsonify({"message": f"Error: {e!s}"}), 500
 
 
 @bp.route("/users/<int:user_id>", methods=["GET"])
@@ -475,7 +473,7 @@ def get_user(user_id):
                 }
                 user_projects.append(project_info)
             except Exception as e:
-                logging.warning(f"Could not load project {db_project.project_id}: {e}")
+                logger.warning(f"Could not load project {db_project.project_id}: {e}")
                 user_projects.append(
                     {
                         "id": db_project.id,
@@ -497,7 +495,7 @@ def get_user(user_id):
                 }
                 user_projects.append(project_info)
             except Exception as e:
-                logging.warning(f"Could not load project {db_project.project_id}: {e}")
+                logger.warning(f"Could not load project {db_project.project_id}: {e}")
                 user_projects.append(
                     {
                         "id": db_project.id,
@@ -512,7 +510,7 @@ def get_user(user_id):
         return jsonify({"user": user_data}), 200
 
     except SQLAlchemyError as e:
-        return jsonify({"message": f"Database error: {str(e)}"}), 500
+        return jsonify({"message": f"Database error: {e!s}"}), 500
 
 
 @bp.route("/projects", methods=["GET"])
@@ -571,8 +569,8 @@ def get_all_projects():
                         project_data["status"] = project_config.get("review", {}).get(
                             "status", "setup"
                         )
-                    except (json.JSONDecodeError, IOError) as e:
-                        logging.warning(
+                    except (OSError, json.JSONDecodeError) as e:
+                        logger.warning(
                             f"Could not read project.json for {db_project.project_id}: {e}"
                         )
                         # Keep error status (already set), add error details
@@ -584,7 +582,7 @@ def get_all_projects():
                 project_list.append(project_data)
 
             except Exception as e:
-                logging.error(f"Error processing project {db_project.project_id}: {e}")
+                logger.error(f"Error processing project {db_project.project_id}: {e}")
                 # Still add the project but mark it as having an error
                 project_list.append(
                     {
@@ -620,10 +618,10 @@ def get_all_projects():
         ), 200
 
     except SQLAlchemyError as e:
-        return jsonify({"message": f"Database error: {str(e)}"}), 500
+        return jsonify({"message": f"Database error: {e!s}"}), 500
     except Exception as e:
-        logging.error(f"Error retrieving projects: {e}")
-        return jsonify({"message": f"Error retrieving projects: {str(e)}"}), 500
+        logger.error(f"Error retrieving projects: {e}")
+        return jsonify({"message": f"Error retrieving projects: {e!s}"}), 500
 
 
 @bp.route("/projects/batch-delete", methods=["POST"])
@@ -676,7 +674,7 @@ def batch_delete_projects():
                 shutil.rmtree(project_path)
                 deleted_directories += 1
             except Exception as e:
-                logging.warning(
+                logger.warning(
                     f"Failed to delete project directory {project_path}: {e}"
                 )
 
@@ -693,11 +691,11 @@ def batch_delete_projects():
 
     except SQLAlchemyError as e:
         DB.session.rollback()
-        return jsonify({"message": f"Database error: {str(e)}"}), 500
+        return jsonify({"message": f"Database error: {e!s}"}), 500
     except Exception as e:
         DB.session.rollback()
-        logging.error(f"Error batch deleting projects: {e}")
-        return jsonify({"message": f"Error deleting projects: {str(e)}"}), 500
+        logger.error(f"Error batch deleting projects: {e}")
+        return jsonify({"message": f"Error deleting projects: {e!s}"}), 500
 
 
 @bp.route("/projects/<int:project_id>/transfer-ownership", methods=["POST"])
@@ -760,16 +758,14 @@ def transfer_project_ownership(project_id):
 
     except ValueError as e:
         DB.session.rollback()
-        return jsonify({"message": f"Validation error: {str(e)}"}), 400
+        return jsonify({"message": f"Validation error: {e!s}"}), 400
     except SQLAlchemyError as e:
         DB.session.rollback()
-        return jsonify({"message": f"Database error: {str(e)}"}), 500
+        return jsonify({"message": f"Database error: {e!s}"}), 500
     except Exception as e:
         DB.session.rollback()
-        logging.error(f"Error transferring project ownership: {e}")
-        return jsonify(
-            {"message": f"Error transferring project ownership: {str(e)}"}
-        ), 500
+        logger.error(f"Error transferring project ownership: {e}")
+        return jsonify({"message": f"Error transferring project ownership: {e!s}"}), 500
 
 
 @bp.route("/projects/<int:project_id>/add-member", methods=["POST"])
@@ -819,12 +815,12 @@ def add_project_member(project_id):
 
     except SQLAlchemyError as e:
         DB.session.rollback()
-        logging.exception(e)
-        return jsonify({"message": f"Database error: {str(e)}"}), 500
+        logger.exception(e)
+        return jsonify({"message": f"Database error: {e!s}"}), 500
     except Exception as e:
         DB.session.rollback()
-        logging.exception(e)
-        return jsonify({"message": f"Error adding member: {str(e)}"}), 500
+        logger.exception(e)
+        return jsonify({"message": f"Error adding member: {e!s}"}), 500
 
 
 # Please note: the Task Manager is running in an independent process. It might
@@ -904,10 +900,8 @@ def get_task_queue_status():
             engine.dispose()
 
     except Exception as e:
-        logging.error(f"Error retrieving task queue status: {e}")
-        return jsonify(
-            {"message": f"Error retrieving task queue status: {str(e)}"}
-        ), 500
+        logger.error(f"Error retrieving task queue status: {e}")
+        return jsonify({"message": f"Error retrieving task queue status: {e!s}"}), 500
 
 
 @bp.route("/task-queue-reset", methods=["POST"])
@@ -926,7 +920,7 @@ def reset_task_queue():
             session.query(ProjectQueueModel).delete()
             session.commit()
 
-            logging.info(f"Cleared {waiting_count} waiting tasks from queue database")
+            logger.info(f"Cleared {waiting_count} waiting tasks from queue database")
 
         finally:
             session.close()
@@ -944,12 +938,10 @@ def reset_task_queue():
             client_socket.sendall(json.dumps(payload).encode("utf-8"))
             client_socket.close()
 
-            logging.info("Sent reset signal to Task Manager")
+            logger.info("Sent reset signal to Task Manager")
 
-        except socket.error as e:
-            logging.warning(
-                f"Could not signal Task Manager to reset pending tasks: {e}"
-            )
+        except OSError as e:
+            logger.warning(f"Could not signal Task Manager to reset pending tasks: {e}")
             # Continue anyway - database was cleared successfully
 
         return jsonify(
@@ -960,8 +952,8 @@ def reset_task_queue():
         ), 200
 
     except Exception as e:
-        logging.error(f"Error resetting task queue: {e}")
-        return jsonify({"message": f"Error resetting task queue: {str(e)}"}), 500
+        logger.error(f"Error resetting task queue: {e}")
+        return jsonify({"message": f"Error resetting task queue: {e!s}"}), 500
 
 
 def _ensure_utc_timezone(dt):
@@ -1003,7 +995,7 @@ def _get_task_manager_status():
                 "error": "Task Manager connected but sent no data",
             }
 
-    except socket.timeout:
+    except TimeoutError:
         return {
             "status": "timeout",
             "error": "Task Manager did not respond within 3 seconds",
@@ -1013,5 +1005,5 @@ def _get_task_manager_status():
     except Exception as e:
         return {
             "status": "error",
-            "error": f"Failed to connect to Task Manager: {str(e)}",
+            "error": f"Failed to connect to Task Manager: {e!s}",
         }

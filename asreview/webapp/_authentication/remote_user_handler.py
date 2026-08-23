@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import ClassVar
+
 from werkzeug.exceptions import HTTPException
 
 
@@ -21,7 +23,7 @@ class RemoteUserNotAllowed(HTTPException):
 
 
 class RemoteUserHandler:
-    default_headers = {
+    default_headers: ClassVar[dict] = {
         "USER_IDENTIFIER_HEADER": "REMOTE_USER",
         "USER_NAME_HEADER": False,
         "USER_EMAIL_HEADER": False,
@@ -30,7 +32,9 @@ class RemoteUserHandler:
         "DEFAULT_AFFILIATION": None,
     }
 
-    def __init__(self, config={}):
+    def __init__(self, config=None):
+        if config is None:
+            config = {}
         for key, value in self.__class__.default_headers.items():
             self.__dict__[key.lower()] = config.get(key, value)
 

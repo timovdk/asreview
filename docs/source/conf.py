@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 #
 # Configuration file for the Sphinx documentation builder.
 #
@@ -39,10 +38,10 @@ suppress_warnings = [
 # -- Project information -----------------------------------------------------
 
 # add current year
-year = datetime.datetime.now().year
+year = datetime.datetime.now(datetime.timezone.utc).year
 
 project = "ASReview LAB"
-copyright = "{}, ASReview LAB developers".format(year)
+copyright = f"{year}, ASReview LAB developers"
 author = "ASReview LAB developers, Utrecht University"
 
 # The short X.Y version

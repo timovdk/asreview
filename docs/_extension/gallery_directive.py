@@ -13,8 +13,7 @@ but might be abstracted into a standalone package if it proves useful.
 
 from pathlib import Path
 from typing import Any
-from typing import Dict
-from typing import List
+from typing import ClassVar
 
 from docutils import nodes
 from docutils.parsers.rst import directives
@@ -63,14 +62,14 @@ class GalleryGridDirective(SphinxDirective):
     required_arguments = 0
     optional_arguments = 1
     final_argument_whitespace = True
-    option_spec = {
+    option_spec: ClassVar[dict] = {
         # A class to be added to the resulting container
         "grid-columns": directives.unchanged,
         "class-container": directives.unchanged,
         "class-card": directives.unchanged,
     }
 
-    def run(self) -> List[nodes.Node]:
+    def run(self) -> list[nodes.Node]:
         """Create the gallery grid."""
         if self.arguments:
             # If an argument is given, assume it's a path to a YAML file
@@ -131,7 +130,7 @@ class GalleryGridDirective(SphinxDirective):
         return [container.children[0]]
 
 
-def setup(app: Sphinx) -> Dict[str, Any]:
+def setup(app: Sphinx) -> dict[str, Any]:
     """Add custom configuration to sphinx app.
 
     Args:

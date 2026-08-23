@@ -81,9 +81,7 @@ def is_project(project_dir):
         return False
     with open(project_config_fp) as f:
         project_config = json.load(f)
-    if detect_version(project_config) != Project.VERSION:
-        return False
-    return True
+    return detect_version(project_config) == Project.VERSION
 
 
 class Project:
@@ -196,13 +194,12 @@ class Project:
             project_fp_lock = Path(project_path, cls.PATH_CONFIG_LOCK)
             lock = FileLock(project_fp_lock, timeout=3)
 
-            with lock:
-                with open(project_fp, "w") as f:
-                    json.dump(config, f)
+            with lock, open(project_fp, "w") as f:
+                json.dump(config, f)
 
-        except Exception as err:
+        except Exception:
             shutil.rmtree(project_path)
-            raise err
+            raise
 
         return cls(project_path, project_id=project_id)
 
@@ -218,13 +215,12 @@ class Project:
             if not project_fp.exists():
                 raise ProjectNotFoundError(f"Project '{self.project_path}' not found")
 
-            with lock:
-                # read the file with project info
-                with open(project_fp) as fp:
-                    config = json.load(fp)
-                    self._config = config
+            # read the file with project info
+            with lock, open(project_fp) as fp:
+                config = json.load(fp)
+                self._config = config
 
-                    return config
+                return config
 
     @config.setter
     def config(self, config):
@@ -232,9 +228,8 @@ class Project:
         project_fp_lock = Path(self.project_path, self.PATH_CONFIG_LOCK)
         lock = FileLock(project_fp_lock, timeout=3)
 
-        with lock:
-            with open(project_fp, "w") as f:
-                json.dump(config, f)
+        with lock, open(project_fp, "w") as f:
+            json.dump(config, f)
 
         self._config = config
 
@@ -291,7 +286,7 @@ class Project:
         # necessary in the input data, we should move it from `Record` to the `Base`
         # class, so that all record implementations have it.
         if self.config["mode"] == self.MODE_SIMULATE and (
-            all([r.included is None for r in records])
+            all(r.included is None for r in records)
         ):
             raise ValueError(
                 "Dataset for simulation mode must have labels for all records - "
@@ -299,7 +294,7 @@ class Project:
             )
 
         if self.config["mode"] == self.MODE_SIMULATE and (
-            any([r.included is None for r in records])
+            any(r.included is None for r in records)
         ):
             raise ValueError(
                 "Dataset for simulation mode must be fully labeled - "
@@ -539,7 +534,7 @@ class Project:
 
                     # extract all files to folder
                     for f in zip_filenames:
-                        if not (f.endswith(".pickle") or f.endswith(".lock")):
+                        if not (f.endswith((".pickle", ".lock"))):
                             zip_obj.extract(f, path=tmpdir)
 
             except zipfile.BadZipFile:

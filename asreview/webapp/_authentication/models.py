@@ -25,16 +25,16 @@ from sqlalchemy import ForeignKey
 from sqlalchemy import Integer
 from sqlalchemy import String
 from sqlalchemy import UniqueConstraint
-from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from sqlalchemy.orm import validates
+from sqlalchemy.sql import func
 from werkzeug.security import check_password_hash
 from werkzeug.security import generate_password_hash
 
 from asreview.webapp import DB
 from asreview.webapp.utils import asreview_path
 
-PASSWORD_REGEX = r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$"  # noqa
+PASSWORD_REGEX = r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$"
 EMAIL_REGEX = r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,7}\b"
 VALID_ROLES = {"member", "admin"}
 
@@ -165,7 +165,8 @@ class User(UserMixin, DB.Model):
         token_number = random.randint(0, 999999)
 
         self.token = f"{token_number:06d}"
-        self.token_created_at = dt.datetime.now()
+        # naive UTC, to stay comparable across DST transitions
+        self.token_created_at = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
         return self
 
     def verify_password(self, password):
@@ -201,7 +202,8 @@ class User(UserMixin, DB.Model):
         """Checks whether provided token is correct and still valid"""
         # there must be a token and a timestamp
         if bool(self.token) and bool(self.token_created_at):
-            diff = (dt.datetime.now() - self.token_created_at).total_seconds()
+            now = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+            diff = (now - self.token_created_at).total_seconds()
             # return if token is correct and we are still before deadline
             return self.token == provided_token and diff <= max_minutes * 60
         else:
