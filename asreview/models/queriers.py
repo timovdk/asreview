@@ -57,6 +57,11 @@ class Random(QueryMixin, BaseEstimator):
     """Random query strategy.
 
     Choose the samples to be included at random.
+
+    Arguments
+    ---------
+    random_state: int, RandomState
+        Random state for shuffling the indices.
     """
 
     name = "random"
@@ -114,6 +119,16 @@ class Uncertainty(QueryMixin, BaseEstimator):
     Choose the most uncertain samples according to the model (i.e. closest to
     0.5 probability). If decision functions are used, the samples closest to
     the decision boundary are chosen (0).
+
+    Arguments
+    ---------
+    u: float
+        The uncertainty threshold for the uncertainty query strategy.
+    proba: bool
+        When u is not given, whether to default the uncertainty reference
+        point to 0.5 (proba=True, for probability-like scores) or 0
+        (proba=False, for decision-function-like scores). Has no effect
+        if u is set explicitly.
 
     """
 
@@ -174,6 +189,22 @@ class HybridMaxUncertainty(QueryMixin, BaseEstimator):
     At each query 95% of the instances would be sampled with the maximum
     query strategy after which the remaining 5% would be sampled with
     the uncertainty query strategy.
+
+    Arguments
+    ---------
+    probability: float
+        The probability of sampling with the maximum query strategy.
+    u: float
+        The uncertainty threshold for the uncertainty query strategy.
+    proba: bool
+        When u is not given, whether to default the uncertainty reference
+        point to 0.5 (proba=True, for probability-like scores) or 0
+        (proba=False, for decision-function-like scores). Has no effect
+        if u is set explicitly.
+    random_state: int, RandomState
+        Controls the random draws used to decide, at each step, whether
+        the next item comes from the Max ranking or the Uncertainty ranking.
+
     """
 
     name = "max_uncertainty"
@@ -207,7 +238,8 @@ class HybridMaxRandom(QueryMixin, BaseEstimator):
     probability: float
         The probability of sampling with the maximum query strategy.
     random_state: int, RandomState
-        Random
+        Controls the random draws used to decide, at each step, whether
+        the next item comes from the Max ranking or the Random ranking.
 
     """
 
