@@ -36,12 +36,13 @@ def _random_array(n, random_state=None):
 
 
 def _mix_indices(query_idx_1, query_idx_2, mix_probability=0.95, random_state=None):
+    rng = check_random_state(random_state)
     query_idx_mix = []
     i = 0
     j = 0
 
     while i < len(query_idx_1) and j < len(query_idx_2):
-        if check_random_state(random_state).rand() < mix_probability:
+        if rng.rand() < mix_probability:
             query_idx_mix.append(query_idx_1[i])
             i = i + 1
         else:
